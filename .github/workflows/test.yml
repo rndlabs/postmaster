@@ -29,6 +29,8 @@ jobs:
         id: build
 
       - name: Run Forge tests
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
         run: |
-          forge test -vvv
+          forge test --rpc-url $RPC_URL -vvv
         id: test
