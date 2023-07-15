@@ -278,4 +278,11 @@ contract PostMaster {
     function calc(uint256 initialBalancePerChunk, uint8 depth) private pure returns (uint256) {
         return initialBalancePerChunk * (1 << depth);
     }
+
+    /**
+     * @dev Fallback function to allow the contract to receive ETH.
+     *      This is needed for the UniswapV2Router02 contract to work and protect against
+     *      users sending too much xDAI for the batch.
+     */
+    receive() external payable {}
 }
