@@ -139,13 +139,23 @@ contract PostMaster {
      * Get a quote for how much xDAI we need to purchase a batch for a given amount of BZZ.
      * @param initialBalancePerChunk BZZ paid down per chunk
      * @param depth The depth, and therefore size of the batch to purchase
+     * @return _seconds The amount of time the batch will be valid for
+     * @return xdaiRequired The amount of xDAI required to purchase the batch
      */
-    function quotexDAI(uint256 initialBalancePerChunk, uint8 depth) public view returns (uint256, uint256) {
+    function quotexDAI(uint256 initialBalancePerChunk, uint8 depth) public view returns (uint256 _seconds, uint256 xdaiRequired) {
         // Get the amount of xDAI required to purchase the BZZ
-        uint256 t = initialBalancePerChunk * BLOCKTIME / postageStamp.lastPrice();
-        return (t, getxDAIForExactBZZQuote(calc(initialBalancePerChunk, depth)));
+        _seconds = initialBalancePerChunk * BLOCKTIME / postageStamp.lastPrice();
+        xdaiRequired = getxDAIForExactBZZQuote(calc(initialBalancePerChunk, depth));
     }
 
+    /**
+     * Get a quote for how much xDAI we need to purchase a set of batches when depositing a given
+     * per chunk amount.
+     * @param initialBalancePerChunk BZZ paid down per chunk
+     * @param depths An array of depths to purchase
+     * @return xdaiRequired How much xDAI is required to purchase the batches
+     * @return bzzRequired How much BZZ is required to purchase the batches
+     */
     function quotexDAIMany(uint256 initialBalancePerChunk, uint8[] calldata depths)
         public
         view
@@ -165,6 +175,8 @@ contract PostMaster {
      * quote for how much xDAI we need to purchase a batch.
      * @param depth The depth of the postage batch
      * @param _seconds How long the postage batch should be valid for
+     * @return initialBalancePerChunk to set when purchasing the batch
+     * @return xdaiRequired to send along with the purchase
      */
     function quotexDAIForTime(uint8 depth, uint256 _seconds)
         public
@@ -185,6 +197,7 @@ contract PostMaster {
      * @param _seconds How long the postage batches should be valid for
      * @return initialBalancePerChunk to set when purchasing the batch
      * @return xdaiRequired to send along with the purchase
+     * @return bzzRequired that will be passed to the `wad` parameter of `purchaseMany`
      */
     function quotexDAIForTimeMany(uint8[] calldata depth, uint256 _seconds)
         public
@@ -207,8 +220,9 @@ contract PostMaster {
     /**
      * Given that we want a fixed amount of BZZ, get a quote for how much xDAI we need.
      * @param wad The amount of BZZ to purchase.
+     * @return xdaiRequired The amount of xDAI required to purchase the BZZ
      */
-    function getxDAIForExactBZZQuote(uint256 wad) public view returns (uint256) {
+    function getxDAIForExactBZZQuote(uint256 wad) public view returns (uint256 xdaiRequired) {
         address[] memory path = new address[](2);
         path[0] = address(wxDAI);
         path[1] = address(bzz);
