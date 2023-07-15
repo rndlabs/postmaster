@@ -198,9 +198,10 @@ contract PostMaster {
             // iterate through all the batches and calculate the total amount of BZZ required
             for (uint256 i = 0; i < depth.length; i++) {
                 bzzRequired += calc(initialBalancePerChunk, depth[i]);
-                xdaiRequired += getxDAIForExactBZZQuote(bzzRequired);
             }
         }
+
+        xdaiRequired = getxDAIForExactBZZQuote(bzzRequired);
     }
 
     /**
