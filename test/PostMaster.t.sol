@@ -96,7 +96,7 @@ contract PostMasterTest is Test {
         // and an array of 1
         uint8[] memory depths = new uint8[](1);
         depths[0] = 18;
-        (, uint256 xdaiRequiredMany) = pm.quotexDAIMany(500_000, depths);
+        (uint256 xdaiRequiredMany, ) = pm.quotexDAIMany(500_000, depths);
 
         // Check the invariants
         assertEq(xdaiRequired, xdaiRequiredMany);
