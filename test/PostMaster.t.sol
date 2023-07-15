@@ -22,14 +22,7 @@ contract PostMasterTest is Test {
         uint256 bzzBalanceBeforePm = bzz.balanceOf(address(pm));
 
         // Then purchase the stamp
-        pm.purchase{value: amount}(
-            address(this),
-            initialBalancePerChunk,
-            18,
-            16,
-            bytes32(0),
-            false
-        );
+        pm.purchase{value: amount}(address(this), initialBalancePerChunk, 18, 16, bytes32(0), false);
 
         // After the stamp has been purchased, we should have less xDAI
         assertEq(address(this).balance, xDaiBalanceBefore - amount);
@@ -39,17 +32,38 @@ contract PostMasterTest is Test {
         assertEq(bzz.balanceOf(address(pm)), bzzBalanceBeforePm);
     }
 
+    function test_PurchaseManyForAMonth() public {
+        // First get a quote
+        // Create an array of 10 uint8s
+        uint8[] memory depths = new uint8[](10);
+        // Fill the array with 18s
+        for (uint8 i = 0; i < depths.length; i++) {
+            depths[i] = 18 + i;
+        }
+        (uint256 initialBalancePerChunk, uint256 xDaiRequired, uint256 bzzRequired) = pm.quotexDAIForTimeMany(depths, 30 days);
+
+        // Create an array of 10 bytes32s and fill with random bytes32s
+        bytes32[] memory nonces = new bytes32[](10);
+        for (uint8 i = 0; i < nonces.length; i++) {
+            nonces[i] = bytes32(uint256(keccak256(abi.encodePacked(block.timestamp, i))));
+        }
+
+        uint256 xDaiBalanceBefore = address(this).balance;
+        uint256 xDaiBalanceBeforePm = address(pm).balance;
+        uint256 bzzBalanceBeforePm = bzz.balanceOf(address(pm));
+
+        // Purchase the many batches
+        pm.purchaseMany{value: xDaiRequired}(address(this), initialBalancePerChunk, depths, 16, nonces, false, bzzRequired);
+
+        // After the stamp has been purchased, we should have less xDAI
+        assertEq(address(this).balance, xDaiBalanceBefore - xDaiRequired);
+        // The PostMaster should have no xDAI
+        assertEq(address(pm).balance, xDaiBalanceBeforePm);
+        // The PostMaster should have no BZZ
+        assertEq(bzz.balanceOf(address(pm)), bzzBalanceBeforePm);
+    }
+
     function test_noop() public {
         assertEq(true, true);
     }
-
-    // function testIncrement() public {
-    //     avatar.increment();
-    //     assertEq(avatar.number(), 1);
-    // }
-
-    // function testSetNumber(uint256 x) public {
-    //     avatar.setNumber(x);
-    //     assertEq(avatar.number(), x);
-    // }
 }

@@ -34,6 +34,7 @@ interface ChainLog {
  *     - `PostageStamp` to create the batch.
  */
 contract PostMaster {
+    // --- constants
     // The UniswapV2Router contract for the Honeyswap DEX
     IUniswapV2Router02 private constant router = IUniswapV2Router02(0x1C232F01118CB8B424793ae03F870aa7D0ac7f77);
     // The bridged BZZ token on Gnosis Chain
@@ -42,11 +43,13 @@ contract PostMaster {
     ERC20 private constant wxDAI = ERC20(0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d);
     // Configure the chainlog
     ChainLog private constant log = ChainLog(0x4989F405b9c449Ccf3FdEa0f60B613afF1E55E14);
+    // ChainLog key for PostageStamp
+    bytes32 private constant POSTAGE_STAMP_KEY = bytes32("SWARM_POSTAGE_STAMP");
+    // Blocktime
+    uint256 private constant BLOCKTIME = 5;
+
     // The postage stamp contract
     IPostageStamp private postageStamp;
-
-    // keys
-    bytes32 private constant POSTAGE_STAMP_KEY = bytes32("SWARM_POSTAGE_STAMP");
 
     // errors
     error PostageStampNotFound();
@@ -65,6 +68,14 @@ contract PostMaster {
         bzz.approve(address(postageStamp), type(uint256).max);
     }
 
+    modifier checkPostageStampPaused() {
+        // Check to make sure postage stamp is not paused
+        if (postageStamp.paused()) {
+            recover();
+        }
+        _;
+    }
+
     /**
      * Purchase a postage batch.
      * @param owner The `owner` of the postage batch
@@ -81,12 +92,7 @@ contract PostMaster {
         uint8 bucketDepth,
         bytes32 nonce,
         bool immutableFlag
-    ) public payable {
-        // Check to make sure postage stamp is not paused
-        if (postageStamp.paused()) {
-            recover();
-        }
-
+    ) public payable checkPostageStampPaused {
         // Swap xDAI to BZZ
         swapxDAItoBzz(calc(initialBalancePerChunk, depth));
 
@@ -95,34 +101,111 @@ contract PostMaster {
     }
 
     /**
+     * Purchase a set of postage batches. This is useful if you want to upload data and not
+     * waste any space in the batches.
+     * @param owner The `owner` of the new postage batches
+     * @param initialBalancePerChunk The amount of BZZ to pay down per chunk
+     * @param depths For each batch, the depth, and therefore size of the batch to purchase
+     * @param bucketDepth A parameter which seems to do nothing 🗑🚮
+     * @param nonces The nonces of the batches to purchase. These are used to generate the batch IDs.
+     * @param immutableFlag Whether the set of batches is immutable
+     * @param wad The calculated amount of BZZ to purchase
+     */
+    function purchaseMany(
+        address owner,
+        uint256 initialBalancePerChunk,
+        uint8[] calldata depths,
+        uint8 bucketDepth,
+        bytes32[] calldata nonces,
+        bool immutableFlag,
+        uint256 wad
+    ) public payable checkPostageStampPaused {
+        require(depths.length == nonces.length, "PostMaster: depths and nonces must be the same length");
+
+        // Swap xDAI to BZZ
+        swapxDAItoBzz(wad);
+
+        // Create all the batches
+        unchecked {
+            for (uint256 i = 0; i < depths.length; i++) {
+                postageStamp.createBatch(
+                    owner, initialBalancePerChunk, depths[i], bucketDepth, nonces[i], immutableFlag
+                );
+            }
+        }
+    }
+
+    /**
      * Get a quote for how much xDAI we need to purchase a batch for a given amount of BZZ.
      * @param initialBalancePerChunk BZZ paid down per chunk
      * @param depth The depth, and therefore size of the batch to purchase
      */
-    function quotexDAI(uint256 initialBalancePerChunk, uint8 depth) public view returns (uint256) {
+    function quotexDAI(uint256 initialBalancePerChunk, uint8 depth) public view returns (uint256, uint256) {
         // Get the amount of xDAI required to purchase the BZZ
-        return getxDAIForExactBZZQuote(calc(initialBalancePerChunk, depth));
+        uint256 t = initialBalancePerChunk * BLOCKTIME / postageStamp.lastPrice();
+        return (t, getxDAIForExactBZZQuote(calc(initialBalancePerChunk, depth)));
+    }
+
+    function quotexDAIMany(uint256 initialBalancePerChunk, uint8[] calldata depths)
+        public
+        view
+        returns (uint256 xdaiRequired, uint256 bzzRequired)
+    {
+        // iterate through all the batches and calculate the total amount of BZZ required
+        for (uint256 i = 0; i < depths.length; i++) {
+            bzzRequired += calc(initialBalancePerChunk, depths[i]);
+        }
+
+        // we do the quote at the end as there may be slippage on the BZZ price
+        xdaiRequired = getxDAIForExactBZZQuote(bzzRequired);
     }
 
     /**
-     * Get a quote for how much xDAI we need to purchase a batch for a given amount of time.
+     * Given a desired amount of storage (measured in depth) for a given amount of time, get a
+     * quote for how much xDAI we need to purchase a batch.
      * @param depth The depth of the postage batch
      * @param _seconds How long the postage batch should be valid for
      */
-    function quotexDAIForTime(uint8 depth, uint256 _seconds) public view returns (uint256, uint256) {
-        // Get the amount of blocks required to cover the time
-        uint256 blocks = _seconds / 5;
-
+    function quotexDAIForTime(uint8 depth, uint256 _seconds)
+        public
+        view
+        returns (uint256 initialBalancePerChunk, uint256 xdaiRequired)
+    {
         // Get the initial balance per chunk
-        uint256 initalBalancePerChunk = blocks * postageStamp.lastPrice();
+        initialBalancePerChunk = _seconds / BLOCKTIME * postageStamp.lastPrice();
 
         // Return the amount of xDAI for BZZ on a batch to cover the time
-        return (initalBalancePerChunk, getxDAIForExactBZZQuote(calc(initalBalancePerChunk, depth)));
+        xdaiRequired = getxDAIForExactBZZQuote(calc(initialBalancePerChunk, depth));
     }
 
     /**
-     * A helper function to get the amount of xDAI required to purchase a given amount of BZZ.
-     * @param wad The amount of BZZ to purchase
+     * Given a desired amount of storage (expressed in multiple depths) for a given amount of time,
+     * get a quote for how much xDAI we need to purchase the batches.
+     * @param depth An array of batch depths to purchase
+     * @param _seconds How long the postage batches should be valid for
+     * @return initialBalancePerChunk to set when purchasing the batch
+     * @return xdaiRequired to send along with the purchase
+     */
+    function quotexDAIForTimeMany(uint8[] calldata depth, uint256 _seconds)
+        public
+        view
+        returns (uint256 initialBalancePerChunk, uint256 xdaiRequired, uint256 bzzRequired)
+    {
+        // Get the initial balance per chunk
+        initialBalancePerChunk = _seconds / BLOCKTIME * postageStamp.lastPrice();
+
+        unchecked {
+            // iterate through all the batches and calculate the total amount of BZZ required
+            for (uint256 i = 0; i < depth.length; i++) {
+                bzzRequired += calc(initialBalancePerChunk, depth[i]);
+                xdaiRequired += getxDAIForExactBZZQuote(bzzRequired);
+            }
+        }
+    }
+
+    /**
+     * Given that we want a fixed amount of BZZ, get a quote for how much xDAI we need.
+     * @param wad The amount of BZZ to purchase.
      */
     function getxDAIForExactBZZQuote(uint256 wad) public view returns (uint256) {
         address[] memory path = new address[](2);
