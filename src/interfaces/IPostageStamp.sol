@@ -24,7 +24,6 @@ interface IPostageStamp {
     function minimumBucketDepth() external view returns (uint8);
     function validChunkCount() external view returns (uint256);
     function pot() external view returns (uint256);
-    function minimumValidityBlocks() external view returns (uint256);
     function lastPrice() external view returns (uint256);
     function lastUpdatedBlock() external view returns (uint256);
     function lastExpiryBalance() external view returns (uint256);
