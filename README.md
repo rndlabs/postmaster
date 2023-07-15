@@ -1,5 +1,7 @@
 # 📬 `PostMaster`
 
+[![test](https://github.com/rndlabs/postmaster/actions/workflows/test.yml/badge.svg)](https://github.com/rndlabs/postmaster/actions/workflows/test.yml)
+
 **CAUTION**: This contract is **NOT** audited. Use at your own risk.
 
 This is a helper contract that can be used to atomically purchase a batch of stamps for [Swarm](https://ethswarm.org) using xDAI as the input.
